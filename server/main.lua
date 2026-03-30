@@ -8,8 +8,10 @@ local ActiveWantedItems = {}
 
 -- Initialize baseline economy
 CreateThread(function()
+    -- Load Persisted Economy
+    local savedData = LoadEconomyState()
     for itemName, _ in pairs(Config.Items) do
-        ItemMultipliers[itemName] = 1.0
+        ItemMultipliers[itemName] = savedData[itemName] or 1.0
         -- If rotation is disabled, they want everything always
         if not Config.Economy.RotationEnabled then
              ActiveWantedItems[itemName] = true
@@ -18,11 +20,11 @@ CreateThread(function()
     
     if Config.Economy.RotationEnabled then
         RotateWantedItems()
-        print("[DjonStNix-Pawnshop] 🔄 Shop Economy Initialized: Rotation ENABLED.")
+        LogAction("Debug", "Shop Economy Initialized: Rotation ENABLED.")
     else
         local count = 0
         for _ in pairs(ActiveWantedItems) do count = count + 1 end
-        print(string.format("[DjonStNix-Pawnshop] 📉 Shop Economy Initialized: Rotation DISABLED. (%s items pawnable)", count))
+        LogAction("Debug", string.format("Shop Economy Initialized: Rotation DISABLED. (%s items pawnable)", count))
     end
 end)
 
@@ -47,22 +49,27 @@ function RotateWantedItems()
     
     -- Pick top N
     local maxCount = math.min(Config.Economy.MaxWantedItems, #itemKeys)
-    for i = 1, maxCount do
-        ActiveWantedItems[itemKeys[i]] = true
+    if maxCount == 0 and #itemKeys == 0 then
+        -- Fallback: If no items picked by chance, just pick 1 random from all items
+        local allKeys = {}
+        for k, _ in pairs(Config.Items) do table.insert(allKeys, k) end
+        ActiveWantedItems[allKeys[math.random(#allKeys)]] = true
+    else
+        for i = 1, maxCount do
+            ActiveWantedItems[itemKeys[i]] = true
+        end
     end
     
     if Config.Settings.Debug then
-        print("[DjonStNix-Pawnshop] 🔄 Rotated Wanted Items:")
-        for k, _ in pairs(ActiveWantedItems) do
-            print("- " .. k)
-        end
+        local names = ""
+        for k, _ in pairs(ActiveWantedItems) do names = names .. k .. ", " end
+        LogAction("Debug", "Rotated Wanted Items: " .. names)
     end
 end
 
--- Thread: Rotates Wanted Items every X minutes (Only starts if rotation is enabled)
+-- Thread: Rotates Wanted Items every X minutes
 CreateThread(function()
     if not Config.Economy.RotationEnabled then return end 
-    
     while true do
         Wait(Config.Economy.RotationIntervalMin * 60000)
         RotateWantedItems()
@@ -81,13 +88,41 @@ CreateThread(function()
                     recoveredAny = true
                 end
             end
-            if Config.Settings.Debug and recoveredAny then
-                print("[DjonStNix-Pawnshop] 📈 Economy Recovery Cycle Completed.")
+            if recoveredAny then
+                SaveEconomyState()
+                if Config.Settings.Debug then
+                    LogAction("Debug", "Economy Recovery Cycle Completed.")
+                end
             end
         end
     end
 end)
 
+-- ==============================================================================
+-- 💾 PERSISTENCE & LOGGING UTILS
+-- ==============================================================================
+function SaveEconomyState()
+    SaveResourceFile(GetCurrentResourceName(), "economy_state.json", json.encode(ItemMultipliers), -1)
+end
+
+function LoadEconomyState()
+    local file = LoadResourceFile(GetCurrentResourceName(), "economy_state.json")
+    if file then
+        local data = json.decode(file)
+        return data or {}
+    end
+    return {}
+end
+
+function LogAction(type, message)
+    if type == "Debug" and not Config.Settings.Debug then return end
+    
+    local timestamp = os.date("%Y-%m-%d %H:%M:%S")
+    local resource = GetCurrentResourceName()
+    print(string.format("[%s] [%s] %s", resource, timestamp, message))
+    
+    -- Additional logging (file or webhook) could be added here
+end
 
 -- ==============================================================================
 -- 📡 SECURE DATA TRANSMISSION
@@ -97,48 +132,52 @@ lib.callback.register('djonstnix_pawnshop:server:getSellableItems', function(sou
     if not Player then return {} end
 
     local sellableItems = {}
-    local inventory = Player.PlayerData.items
+    local rawItems = {} -- Normalize inventory data
 
-    for _, itemData in pairs(inventory) do
-        if itemData and itemData.name and Config.Items[itemData.name] then
-            -- ONLY return items if they are currently "wanted" by the pawn shop
-            if ActiveWantedItems[itemData.name] then
-                local count = itemData.amount or itemData.count or 0
-                if count > 0 then
-                    if not sellableItems[itemData.name] then
-                        
-                        -- Calculate the current projected price factoring in global depletion
-                        local basePriceData = Config.Items[itemData.name].price
-                        local currentMult = ItemMultipliers[itemData.name] or 1.0
-                        
-                        local depletedConf = {}
-                        if type(basePriceData) == "table" then
-                            depletedConf.min = math.floor(basePriceData.min * currentMult)
-                            depletedConf.max = math.floor(basePriceData.max * currentMult)
-                        else
-                            depletedConf = math.floor(basePriceData * currentMult)
-                        end
-                        
-                        sellableItems[itemData.name] = {
-                            name = itemData.name,
-                            label = itemData.label or itemData.name,
-                            count = count,
-                            priceConf = depletedConf,
-                            mult = currentMult
-                        }
-                    else
-                        sellableItems[itemData.name].count = sellableItems[itemData.name].count + count
-                    end
-                end
+    -- Elite Mode: Accurate inventory check for both QB and Ox
+    if GetResourceState("ox_inventory") == "started" then
+        local inventory = exports.ox_inventory:GetInventoryItems(source)
+        for _, item in pairs(inventory) do
+            if item and item.name and Config.Items[item.name] then
+                rawItems[item.name] = (rawItems[item.name] or 0) + item.count
+            end
+        end
+    else
+        for _, item in pairs(Player.PlayerData.items) do
+            if item and item.name and Config.Items[item.name] then
+                rawItems[item.name] = (rawItems[item.name] or 0) + (item.amount or item.count or 0)
             end
         end
     end
 
-    return sellableItems, (Config.Economy.RotationIntervalMin) -- Send interval as extra data if needed
+    for itemName, count in pairs(rawItems) do
+        if ActiveWantedItems[itemName] and count > 0 then
+            local currentMult = ItemMultipliers[itemName] or 1.0
+            local basePrice = Config.Items[itemName].price
+            
+            local depletedPrice = {}
+            if type(basePrice) == "table" then
+                depletedPrice.min = math.floor(basePrice.min * currentMult)
+                depletedPrice.max = math.floor(basePrice.max * currentMult)
+            else
+                depletedPrice = math.floor(basePrice * currentMult)
+            end
+
+            sellableItems[itemName] = {
+                name = itemName,
+                label = QBCore.Shared.Items[itemName]?.label or itemName,
+                count = count,
+                priceConf = depletedPrice,
+                mult = currentMult
+            }
+        end
+    end
+
+    return sellableItems, (Config.Economy.RotationIntervalMin)
 end)
 
 -- ==============================================================================
--- 🛒 SECURE TRANSACTION PROCESSING & ALERTS
+-- 🛒 TRANSACTION LOGIC
 -- ==============================================================================
 RegisterNetEvent('djonstnix_pawnshop:server:sellItem', function(itemName, amount)
     local src = source
@@ -146,72 +185,54 @@ RegisterNetEvent('djonstnix_pawnshop:server:sellItem', function(itemName, amount
     if not Player then return end
     
     amount = tonumber(amount)
-    if not amount or amount <= 0 then
-        TriggerClientEvent('ox_lib:notify', src, { title = 'Error', description = 'Invalid amount.', type = 'error' })
-        return
-    end
+    if not amount or amount <= 0 then return end
 
     local itemConf = Config.Items[itemName]
     if not itemConf then
-        print(string.format("[DjonStNix-Pawnshop] Exploit Warning: Player %s attempted to sell invalid item: %s", src, itemName))
+        LogAction("Warning", string.format("Player %s (%s) attempted to sell invalid item: %s", GetPlayerName(src), Player.PlayerData.citizenid, itemName))
         return
     end
     
-    -- Check if it is currently a wanted item (Only if rotation is enabled)
-    if Config.Economy.RotationEnabled and not ActiveWantedItems[itemName] then
-        TriggerClientEvent('ox_lib:notify', src, { title = 'Broker', description = 'I am not interested in buying that right now.', type = 'error' })
-        return
-    end
+    if Config.Economy.RotationEnabled and not ActiveWantedItems[itemName] then return end
 
-    -- Verify distance to prevent remote selling exploits
+    -- Distance validation
     local playerPed = GetPlayerPed(src)
     local playerCoords = GetEntityCoords(playerPed)
     local distValid = false
     for _, loc in pairs(Config.Locations) do
-        local dist = #(playerCoords - vector3(loc.coords.x, loc.coords.y, loc.coords.z))
-        if dist < 10.0 then
+        if #(playerCoords - vector3(loc.coords.x, loc.coords.y, loc.coords.z)) < 10.0 then
             distValid = true
             break
         end
     end
-
     if not distValid then 
-        print(string.format("[DjonStNix-Pawnshop] Exploit Warning: Player %s attempted to sell from too far away.", src))
+        LogAction("Exploit", string.format("Player %s (%s) attempted to sell from too far away.", GetPlayerName(src), Player.PlayerData.citizenid))
         return 
     end
 
-    -- Amount Verification (works for qb/ox/lj)
-    local totalAmount = 0
+    -- Quantity verification
+    local currentCount = 0
     if GetResourceState("ox_inventory") == "started" then
-        totalAmount = exports.ox_inventory:Search(src, 'count', itemName)
+        currentCount = exports.ox_inventory:Search(src, 'count', itemName)
     else
-        for _, v in pairs(Player.PlayerData.items) do
-            if v and v.name == itemName then
-                totalAmount = totalAmount + (v.amount or v.count or 0)
-            end
-        end
+        currentCount = Player.Functions.GetItemByName(itemName)?.amount or 0
     end
 
-    if not totalAmount or totalAmount < amount then
-        TriggerClientEvent('ox_lib:notify', src, { title = 'Error', description = 'You do not have enough of this item.', type = 'error' })
+    if currentCount < amount then
+        LogAction("Warning", string.format("Player %s (%s) attempted to sell more %s than they have (%s/%s)", GetPlayerName(src), Player.PlayerData.citizenid, itemName, amount, currentCount))
         return
     end
 
-    -- Determine payout at CURRENT market multiplier
+    -- Payout & Removal
     local currentMult = ItemMultipliers[itemName] or 1.0
-    local pricePerUnit = 0
-    
+    local price = 0
     if type(itemConf.price) == "table" then
-        local rMin = math.floor(itemConf.price.min * currentMult)
-        local rMax = math.floor(itemConf.price.max * currentMult)
-        pricePerUnit = math.random(math.min(rMin, rMax), math.max(rMin, rMax)) 
+        price = math.random(math.floor(itemConf.price.min * currentMult), math.floor(itemConf.price.max * currentMult))
     else
-        pricePerUnit = math.floor(itemConf.price * currentMult)
+        price = math.floor(itemConf.price * currentMult)
     end
+    local totalPayout = price * amount
 
-    local totalPayout = pricePerUnit * amount
-
-    -- Execute Safe Removal and Payout
     local removed = false
     if GetResourceState("ox_inventory") == "started" then
         removed = exports.ox_inventory:RemoveItem(src, itemName, amount)
@@ -223,36 +244,21 @@ RegisterNetEvent('djonstnix_pawnshop:server:sellItem', function(itemName, amount
         if GetResourceState("ox_inventory") ~= "started" then
             TriggerClientEvent('inventory:client:ItemBox', src, QBCore.Shared.Items[itemName] or {name = itemName, label = itemName}, 'remove', amount)
         end
-        Player.Functions.AddMoney(Config.Settings.Currency, totalPayout, "sold-pawn-shop")
-        TriggerClientEvent('ox_lib:notify', src, { title = 'Success', description = string.format('Sold %sx %s for $%s.', amount, itemName, totalPayout), type = 'success' })
+        Player.Functions.AddMoney(Config.Settings.Currency, totalPayout, "pawn-shop-sell")
+        TriggerClientEvent('ox_lib:notify', src, { title = 'Broker', description = string.format('Sold %sx %s for $%s', amount, itemName, totalPayout), type = 'success' })
         
-        if Config.Settings.Debug then
-            print(string.format("[DjonStNix-Pawnshop] %s sold %sx %s for $%s [Market Mult: %s]", Player.PlayerData.citizenid, amount, itemName, totalPayout, currentMult))
-        end
+        -- Statistics & Logging
+        LogAction("Info", string.format("%s (%s) sold %sx %s for $%s [Mult: %s]", GetPlayerName(src), Player.PlayerData.citizenid, amount, itemName, totalPayout, currentMult))
         
-        -- Apply Depletion
-        if Config.Economy.DepletionEnabled then
-            -- Deplete based on AMOUNT sold
-            local newMult = currentMult - (Config.Economy.DepletionPerSale * amount)
-            if newMult < Config.Economy.MinPriceMultiplier then
-                newMult = Config.Economy.MinPriceMultiplier
-            end
-            ItemMultipliers[itemName] = newMult
-            if Config.Settings.Debug then print("[DjonStNix-Pawnshop] Market Multiplier for " .. itemName .. " dropped to " .. newMult) end
-        end
-        
-        -- Police Snitch System Check
-        if itemConf.hotItem and itemConf.snitchChance then
-            if math.random(1, 100) <= itemConf.snitchChance then
-                Config.Police.AlertFunction(playerCoords, "Pawn Shop", "Suspicious transaction reported involving stolen goods.")
-                if Config.Settings.Debug then
-                    print("[DjonStNix-Pawnshop] 🚨 Snitch Triggered! Police alerted for player " .. src)
-                end
-            end
-        end
+        -- Depletion
+        ItemMultipliers[itemName] = math.max(Config.Economy.MinPriceMultiplier, currentMult - (Config.Economy.DepletionPerSale * amount))
+        SaveEconomyState()
 
-    else
-        TriggerClientEvent('ox_lib:notify', src, { title = 'Error', description = 'Transaction failed. Could not remove item.', type = 'error' })
+        -- Snitch Alert
+        if itemConf.hotItem and itemConf.snitchChance and math.random(1, 100) <= itemConf.snitchChance then
+            Config.Police.AlertFunction(playerCoords, "Pawn Shop", "Suspicious transaction reported.")
+            LogAction("Snitch", string.format("Police alerted for %s (%s) selling stolen %s.", GetPlayerName(src), Player.PlayerData.citizenid, itemName))
+        end
     end
 end)
 
@@ -261,50 +267,41 @@ RegisterNetEvent('djonstnix_pawnshop:server:sellAllItems', function()
     local Player = QBCore.Functions.GetPlayer(src)
     if not Player then return end
     
-    -- Verify distance to prevent remote selling exploits
     local playerPed = GetPlayerPed(src)
     local playerCoords = GetEntityCoords(playerPed)
     local distValid = false
     for _, loc in pairs(Config.Locations) do
-        local dist = #(playerCoords - vector3(loc.coords.x, loc.coords.y, loc.coords.z))
-        if dist < 10.0 then
+        if #(playerCoords - vector3(loc.coords.x, loc.coords.y, loc.coords.z)) < 10.0 then
             distValid = true
             break
         end
     end
-
-    if not distValid then 
-        print(string.format("[DjonStNix-Pawnshop] Exploit Warning: Player %s attempted to sell bulk from too far away.", src))
-        return 
-    end
+    if not distValid then return end
 
     local itemsToSell = {}
-    local totalPayout = 0
-    local totalPieces = 0
-    local triggeredSnitch = false
-
-    -- Calculate what they can sell based on inventory AND if it's currently wanted
-    local inventory = Player.PlayerData.items
-    for _, itemData in pairs(inventory) do
-        if itemData and itemData.name and Config.Items[itemData.name] then
-            if ActiveWantedItems[itemData.name] then
-                local count = itemData.amount or itemData.count or 0
-                if count > 0 then
-                    local itemName = itemData.name
-                    itemsToSell[itemName] = (itemsToSell[itemName] or 0) + count
-                end
+    if GetResourceState("ox_inventory") == "started" then
+        local inv = exports.ox_inventory:GetInventoryItems(src)
+        for _, item in pairs(inv) do
+            if item and item.name and Config.Items[item.name] and ActiveWantedItems[item.name] and item.count > 0 then
+                itemsToSell[item.name] = (itemsToSell[item.name] or 0) + item.count
+            end
+        end
+    else
+        for _, item in pairs(Player.PlayerData.items) do
+            if item and item.name and Config.Items[item.name] and ActiveWantedItems[item.name] and (item.amount or item.count or 0) > 0 then
+                itemsToSell[item.name] = (itemsToSell[item.name] or 0) + (item.amount or item.count or 0)
             end
         end
     end
 
-    if not next(itemsToSell) then
-        TriggerClientEvent('ox_lib:notify', src, { title = 'Error', description = 'You have no wanted items to sell.', type = 'error' })
-        return
-    end
+    if not next(itemsToSell) then return end
+
+    local totalPayout = 0
+    local totalItems = 0
+    local triggeredSnitch = false
 
     for itemName, amount in pairs(itemsToSell) do
         local itemConf = Config.Items[itemName]
-        
         local removed = false
         if GetResourceState("ox_inventory") == "started" then
             removed = exports.ox_inventory:RemoveItem(src, itemName, amount)
@@ -317,52 +314,34 @@ RegisterNetEvent('djonstnix_pawnshop:server:sellAllItems', function()
                 TriggerClientEvent('inventory:client:ItemBox', src, QBCore.Shared.Items[itemName] or {name = itemName, label = itemName}, 'remove', amount)
             end
             
-            -- Current market logic
             local currentMult = ItemMultipliers[itemName] or 1.0
-            local pricePerUnit = 0
-            
+            local price = 0
             if type(itemConf.price) == "table" then
-                local rMin = math.floor(itemConf.price.min * currentMult)
-                local rMax = math.floor(itemConf.price.max * currentMult)
-                pricePerUnit = math.random(math.min(rMin, rMax), math.max(rMin, rMax)) 
+                price = math.random(math.floor(itemConf.price.min * currentMult), math.floor(itemConf.price.max * currentMult))
             else
-                pricePerUnit = math.floor(itemConf.price * currentMult)
+                price = math.floor(itemConf.price * currentMult)
             end
 
-            local payout = pricePerUnit * amount
-            totalPayout = totalPayout + payout
-            totalPieces = totalPieces + amount
-
-            -- Apply Depletion per unit sold
-            if Config.Economy.DepletionEnabled then
-                local newMult = currentMult - (Config.Economy.DepletionPerSale * amount)
-                if newMult < Config.Economy.MinPriceMultiplier then
-                    newMult = Config.Economy.MinPriceMultiplier
-                end
-                ItemMultipliers[itemName] = newMult
-            end
+            totalPayout = totalPayout + (price * amount)
+            totalItems = totalItems + amount
             
-            -- Police Snitch System Check (Only trigger once per bulk transaction if applicable)
-            if itemConf.hotItem and itemConf.snitchChance and not triggeredSnitch then
-                if math.random(1, 100) <= itemConf.snitchChance then
-                    triggeredSnitch = true
-                end
+            ItemMultipliers[itemName] = math.max(Config.Economy.MinPriceMultiplier, currentMult - (Config.Economy.DepletionPerSale * amount))
+            
+            if itemConf.hotItem and itemConf.snitchChance and not triggeredSnitch and math.random(1, 100) <= itemConf.snitchChance then
+                triggeredSnitch = true
             end
         end
     end
 
     if totalPayout > 0 then
-        Player.Functions.AddMoney(Config.Settings.Currency, totalPayout, "sold-pawn-shop-bulk")
-        TriggerClientEvent('ox_lib:notify', src, { title = 'Success', description = string.format('Sold %s items for $%s.', totalPieces, totalPayout), type = 'success' })
+        Player.Functions.AddMoney(Config.Settings.Currency, totalPayout, "pawn-shop-sell-bulk")
+        SaveEconomyState()
+        TriggerClientEvent('ox_lib:notify', src, { title = 'Broker', description = string.format('Bulk sold %s items for $%s', totalItems, totalPayout), type = 'success' })
+        LogAction("Info", string.format("%s (%s) bulk-sold %s items for $%s", GetPlayerName(src), Player.PlayerData.citizenid, totalItems, totalPayout))
         
-        if Config.Settings.Debug then
-            print(string.format("[DjonStNix-Pawnshop] %s bulk-sold %s items for $%s", Player.PlayerData.citizenid, totalPieces, totalPayout))
-        end
-
         if triggeredSnitch then
-            Config.Police.AlertFunction(playerCoords, "Pawn Shop", "Suspicious bulk transaction reported involving stolen goods.")
+            Config.Police.AlertFunction(playerCoords, "Pawn Shop", "Large suspicious transaction reported.")
+            LogAction("Snitch", string.format("Police alerted for bulk sale by %s (%s).", GetPlayerName(src), Player.PlayerData.citizenid))
         end
-    else
-        TriggerClientEvent('ox_lib:notify', src, { title = 'Error', description = 'Bulk transaction failed. Could not process items.', type = 'error' })
     end
 end)

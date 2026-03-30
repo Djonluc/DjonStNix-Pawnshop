@@ -17,16 +17,16 @@ Config.Economy = {
     -- Pawn Shop Configuration
     RotationEnabled = false,        -- If false, ALL items in Config.Items are always buyable. If true, the broker only buys a subset.
     RotationIntervalMin = 60,      -- (Only if RotationEnabled is true) How often the "Wanted Items" change (in minutes)
-    MaxWantedItems = 5,            -- (Only if RotationEnabled is true) How many different items the pawn shop will buy at any given time
+    MaxWantedItems = 8,            -- Increased default for variety
     
     -- Price Depletion
     DepletionEnabled = true,       -- If true, selling an item lowers its price for everyone on the server
-    DepletionPerSale = 0.05,       -- 0.05 = Price drops 5% per item sold
-    MinPriceMultiplier = 0.20,     -- Price cannot drop below 20% of its base value
+    DepletionPerSale = 0.002,      -- 0.002 = Price drops 0.2% per item sold (much safer for bulk)
+    MinPriceMultiplier = 0.25,     -- Price cannot drop below 25% of its base value
     
     -- Price Recovery
-    RecoveryInterval = 10,         -- How often (in minutes) prices recover globally
-    RecoveryAmount = 0.02,         -- 0.02 = Price recovers 2% every interval
+    RecoveryInterval = 5,          -- Recover every 5 minutes instead of 10
+    RecoveryAmount = 0.01,         -- Price recovers 1% every interval
 }
 
 -- ==============================================================================
@@ -298,5 +298,13 @@ Config.Items = {
         price = { min = 250, max = 500 },
         hotItem = true,
         snitchChance = 12
-    }
+    },
+
+    -- Misc Electronics
+    ["iphone"] = { price = 450, hotItem = true, snitchChance = 10 },
+    ["samsung"] = { price = 400, hotItem = true, snitchChance = 10 },
+    ["gameconsole"] = { price = 250, hotItem = true, snitchChance = 15 },
+    -- Tools & Hardware
+
+    ["car_battery"] = { price = 80, hotItem = false }
 }

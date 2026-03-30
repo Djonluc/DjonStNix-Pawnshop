@@ -1,5 +1,6 @@
 local QBCore = exports['qb-core']:GetCoreObject()
 local spawnedPeds = {}
+local spawnedBlips = {}
 
 -- ==============================================================================
 -- 🧍 PED SPAWNING & TARGET INTEGRATION
@@ -60,6 +61,7 @@ CreateThread(function()
             BeginTextCommandSetBlipName("STRING")
             AddTextComponentString(data.blip.title)
             EndTextCommandSetBlipName(blip)
+            spawnedBlips[shopId] = blip
         end
     end
 end)
@@ -70,6 +72,11 @@ AddEventHandler('onResourceStop', function(resourceName)
     for _, ped in pairs(spawnedPeds) do
         if DoesEntityExist(ped) then
             DeleteEntity(ped)
+        end
+    end
+    for _, blip in pairs(spawnedBlips) do
+        if DoesBlipExist(blip) then
+            RemoveBlip(blip)
         end
     end
 end)
