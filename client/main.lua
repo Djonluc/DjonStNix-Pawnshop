@@ -55,7 +55,7 @@ CreateThread(function()
             SetBlipSprite(blip, data.blip.id)
             SetBlipColour(blip, data.blip.color)
             SetBlipScale(blip, data.blip.scale)
-            SetBlipDisplays(blip, 4)
+            SetBlipDisplay(blip, 4)
             SetBlipAsShortRange(blip, true)
             BeginTextCommandSetBlipName("STRING")
             AddTextComponentString(data.blip.title)
@@ -81,8 +81,22 @@ function OpenPawnShopUI()
     -- Fetch ONLY active wanted items from server, with current depleted prices applied.
     lib.callback('djonstnix_pawnshop:server:getSellableItems', false, function(sellableItems, rotationInterval)
         local options = {}
+        
+        local totalSellablePieces = 0
+        local totalEstimatedMin = 0
+        local totalEstimatedMax = 0
+
         for name, data in pairs(sellableItems) do
             if data.count > 0 then
+                
+                totalSellablePieces = totalSellablePieces + data.count
+                if type(data.priceConf) == "table" then
+                     totalEstimatedMin = totalEstimatedMin + (data.priceConf.min * data.count)
+                     totalEstimatedMax = totalEstimatedMax + (data.priceConf.max * data.count)
+                else
+                     totalEstimatedMin = totalEstimatedMin + (data.priceConf * data.count)
+                     totalEstimatedMax = totalEstimatedMax + (data.priceConf * data.count)
+                end
                 
                 -- Construct price string using pre-calculated depleted min/max
                 local priceStr = ""
@@ -114,6 +128,25 @@ function OpenPawnShopUI()
         if #options == 0 then
             lib.notify({ title = 'Pawn Broker', description = 'I am not looking to buy anything you currently have right now. Come back later.', type = 'error' })
             return
+        end
+
+        -- Add 'Sell All' option at the top if there is more than 1 item piece total
+        if totalSellablePieces > 1 then
+            local totalStr = ""
+            if totalEstimatedMin ~= totalEstimatedMax then
+                totalStr = string.format("~ $%s - $%s", totalEstimatedMin, totalEstimatedMax)
+            else
+                totalStr = string.format("$%s", totalEstimatedMin)
+            end
+
+            table.insert(options, 1, {
+                title = "Sell ALL Wanted Goods",
+                description = string.format("Sell all %s wanted items at once.\nEst. Value: %s", totalSellablePieces, totalStr),
+                icon = "circle-dollar-to-slot",
+                onSelect = function()
+                    TriggerServerEvent('djonstnix_pawnshop:server:sellAllItems')
+                end
+            })
         end
 
         lib.registerContext({

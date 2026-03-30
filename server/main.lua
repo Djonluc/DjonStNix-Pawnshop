@@ -242,3 +242,105 @@ RegisterNetEvent('djonstnix_pawnshop:server:sellItem', function(itemName, amount
         TriggerClientEvent('ox_lib:notify', src, { title = 'Error', description = 'Transaction failed. Could not remove item.', type = 'error' })
     end
 end)
+
+RegisterNetEvent('djonstnix_pawnshop:server:sellAllItems', function()
+    local src = source
+    local Player = QBCore.Functions.GetPlayer(src)
+    if not Player then return end
+    
+    -- Verify distance to prevent remote selling exploits
+    local playerPed = GetPlayerPed(src)
+    local playerCoords = GetEntityCoords(playerPed)
+    local distValid = false
+    for _, loc in pairs(Config.Locations) do
+        local dist = #(playerCoords - vector3(loc.coords.x, loc.coords.y, loc.coords.z))
+        if dist < 10.0 then
+            distValid = true
+            break
+        end
+    end
+
+    if not distValid then 
+        print(string.format("[DjonStNix-Pawnshop] Exploit Warning: Player %s attempted to sell bulk from too far away.", src))
+        return 
+    end
+
+    local itemsToSell = {}
+    local totalPayout = 0
+    local totalPieces = 0
+    local triggeredSnitch = false
+
+    -- Calculate what they can sell based on inventory AND if it's currently wanted
+    local inventory = Player.PlayerData.items
+    for _, itemData in pairs(inventory) do
+        if itemData and itemData.name and Config.Items[itemData.name] then
+            if not Config.Economy.RotationEnabled or ActiveWantedItems[itemData.name] then
+                local count = itemData.amount or itemData.count or 0
+                if count > 0 then
+                    local itemName = itemData.name
+                    itemsToSell[itemName] = (itemsToSell[itemName] or 0) + count
+                end
+            end
+        end
+    end
+
+    if not next(itemsToSell) then
+        TriggerClientEvent('ox_lib:notify', src, { title = 'Error', description = 'You have no wanted items to sell.', type = 'error' })
+        return
+    end
+
+    for itemName, amount in pairs(itemsToSell) do
+        local itemConf = Config.Items[itemName]
+        
+        if Player.Functions.RemoveItem(itemName, amount) then
+            TriggerClientEvent('inventory:client:ItemBox', src, QBCore.Shared.Items[itemName] or {name = itemName, label = itemName}, 'remove', amount)
+            
+            -- Current market logic
+            local currentMult = ItemMultipliers[itemName] or 1.0
+            local pricePerUnit = 0
+            
+            if type(itemConf.price) == "table" then
+                local rMin = math.floor(itemConf.price.min * currentMult)
+                local rMax = math.floor(itemConf.price.max * currentMult)
+                pricePerUnit = math.random(math.min(rMin, rMax), math.max(rMin, rMax)) 
+            else
+                pricePerUnit = math.floor(itemConf.price * currentMult)
+            end
+
+            local payout = pricePerUnit * amount
+            totalPayout = totalPayout + payout
+            totalPieces = totalPieces + amount
+
+            -- Apply Depletion per unit sold
+            if Config.Economy.DepletionEnabled then
+                local newMult = currentMult - (Config.Economy.DepletionPerSale * amount)
+                if newMult < Config.Economy.MinPriceMultiplier then
+                    newMult = Config.Economy.MinPriceMultiplier
+                end
+                ItemMultipliers[itemName] = newMult
+            end
+            
+            -- Police Snitch System Check (Only trigger once per bulk transaction if applicable)
+            if itemConf.hotItem and itemConf.snitchChance and not triggeredSnitch then
+                if math.random(1, 100) <= itemConf.snitchChance then
+                    triggeredSnitch = true
+                end
+            end
+        end
+    end
+
+    if totalPayout > 0 then
+        Player.Functions.AddMoney(Config.Settings.Currency, totalPayout, "sold-pawn-shop-bulk")
+        TriggerClientEvent('ox_lib:notify', src, { title = 'Success', description = string.format('Sold %s items for $%s.', totalPieces, totalPayout), type = 'success' })
+        
+        if Config.Settings.Debug then
+            print(string.format("[DjonStNix-Pawnshop] %s bulk-sold %s items for $%s", Player.PlayerData.citizenid, totalPieces, totalPayout))
+        end
+
+        if triggeredSnitch then
+            Config.Police.AlertFunction(playerCoords, "Pawn Shop", "Suspicious bulk transaction reported involving stolen goods.")
+        end
+    else
+        TriggerClientEvent('ox_lib:notify', src, { title = 'Error', description = 'Bulk transaction failed. Could not process items.', type = 'error' })
+    end
+end)
