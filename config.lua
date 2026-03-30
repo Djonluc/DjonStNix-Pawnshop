@@ -15,7 +15,7 @@ Config.Settings = {
 -- ==============================================================================
 Config.Economy = {
     -- Rotating Wanted Items
-    RotationEnabled = true,        -- If true, the pawn shop only buys a random subset of items at a time
+    RotationEnabled = false,        -- If true, the pawn shop only buys a random subset of items at a time
     RotationIntervalMin = 60,      -- How often the "Wanted Items" change (in minutes)
     MaxWantedItems = 3,            -- How many different items the pawn shop will buy at any given time
     
@@ -65,35 +65,238 @@ Config.Locations = {
 -- ==============================================================================
 Config.Items = {
     ["goldbar"] = { 
-        price = { min = 15000, max = 22000 },
+        price = { min = 20000, max = 30000 },
         buyChance = 10,    -- 10% chance the broker will even consider buying this during a rotation (rare)
         hotItem = true,    -- (Stolen / Illegal items)
         snitchChance = 35  -- 35% chance to call cops when sold
     },
+    ["gold"] = { 
+        price = { min = 8000, max = 12000 },
+        buyChance = 15,    -- 15% chance the broker will buy this
+        hotItem = true,    -- (Stolen / Illegal items)
+        snitchChance = 30  -- 30% chance to call cops when sold
+    },
     ["rolex"] = { 
-        price = 250,
+        price = 400,
         hotItem = false -- Legal
     }, 
     ["goldchain"] = { 
-        price = { min = 150, max = 300 },
+        price = { min = 250, max = 450 },
         hotItem = false 
     }, 
     ["diamond_ring"] = { 
-        price = 400,
+        price = 600,
         hotItem = true,    -- (Stolen / Illegal items)
         snitchChance = 10  -- 10% chance to call cops when sold
     },
     ["stolen_tv"] = { 
-        price = { min = 50, max = 150 },
+        price = { min = 100, max = 250 },
         hotItem = true,    -- (Stolen / Illegal items)
         snitchChance = 25  -- 25% chance to call cops when sold
     },
     ["copper_wire"] = { 
-        price = 25,
+        price = 40,
         hotItem = false 
     },
     ["aluminum_scrap"] = { 
-        price = 15,
+        price = 25,
         hotItem = false 
     },
+    -- Heist Loot Items
+    ["gold_ring"] = { 
+        price = 500,
+        hotItem = true,
+        snitchChance = 15
+    },
+    ["gold_watch"] = { 
+        price = 600,
+        hotItem = true,
+        snitchChance = 15
+    },
+    ["gold_bracelet"] = { 
+        price = { min = 200, max = 350 },
+        hotItem = true,
+        snitchChance = 15
+    },
+    ["gold_necklace"] = { 
+        price = { min = 250, max = 400 },
+        hotItem = true,
+        snitchChance = 18
+    },
+    ["heist_paint_1"] = { 
+        price = { min = 20000, max = 25000 },
+        hotItem = true,
+        snitchChance = 50,
+        buyChance = 5  -- Rare, high value
+    },
+    ["heist_paint_2"] = { 
+        price = { min = 20000, max = 25000 },
+        hotItem = true,
+        snitchChance = 50,
+        buyChance = 5
+    },
+    ["heist_paint_3"] = { 
+        price = { min = 20000, max = 25000 },
+        hotItem = true,
+        snitchChance = 50,
+        buyChance = 5
+    },
+    ["heist_paint_4"] = { 
+        price = { min = 20000, max = 25000 },
+        hotItem = true,
+        snitchChance = 50,
+        buyChance = 5
+    },
+    ["painting"] = { 
+        price = 400,
+        hotItem = true,
+        snitchChance = 20
+    },
+    ["silver_coin"] = { 
+        price = 120,
+        hotItem = true,
+        snitchChance = 10
+    },
+    ["gold_coin"] = { 
+        price = 160,
+        hotItem = true,
+        snitchChance = 15
+    },
+    ["ninja_figure"] = { 
+        price = 140,
+        hotItem = true,
+        snitchChance = 10
+    },
+    ["trading_painting"] = { 
+        price = 250,
+        hotItem = true,
+        snitchChance = 15
+    },
+    ["trading_statue"] = { 
+        price = 220,
+        hotItem = true,
+        snitchChance = 15
+    },
+    -- Illegal Activity Items (Non-Drug)
+    ["laptop"] = { 
+        price = { min = 2000, max = 3000 },
+        hotItem = true,
+        snitchChance = 20
+    },
+    ["phone"] = { 
+        price = 500,
+        hotItem = true,
+        snitchChance = 10
+    },
+    ["tablet"] = { 
+        price = { min = 800, max = 1200 },
+        hotItem = true,
+        snitchChance = 15
+    },
+    ["lockpick"] = { 
+        price = { min = 150, max = 300 },
+        hotItem = true,
+        snitchChance = 5
+    },
+    ["advancedlockpick"] = { 
+        price = { min = 300, max = 600 },
+        hotItem = true,
+        snitchChance = 10
+    },
+    ["thermite"] = { 
+        price = { min = 3000, max = 5000 },
+        hotItem = true,
+        snitchChance = 40
+    },
+    ["gatecrack"] = { 
+        price = { min = 2500, max = 4000 },
+        hotItem = true,
+        snitchChance = 35
+    },
+    ["coke_paint_marker"] = { 
+        price = 80,
+        hotItem = true,
+        snitchChance = 5
+    },
+    -- House Robbery Items
+    ["diamond"] = { 
+        price = { min = 800, max = 1200 },
+        hotItem = true,
+        snitchChance = 25
+    },
+    ["ruby"] = { 
+        price = { min = 600, max = 900 },
+        hotItem = true,
+        snitchChance = 20
+    },
+    ["danburite"] = { 
+        price = { min = 400, max = 700 },
+        hotItem = true,
+        snitchChance = 15
+    },
+    ["charlotte_ring"] = { 
+        price = 350,
+        hotItem = true,
+        snitchChance = 15
+    },
+    ["simbolos_chain"] = { 
+        price = 450,
+        hotItem = true,
+        snitchChance = 20
+    },
+    ["action_figure"] = { 
+        price = 180,
+        hotItem = true,
+        snitchChance = 10
+    },
+    ["nomimos_ring"] = { 
+        price = 320,
+        hotItem = true,
+        snitchChance = 15
+    },
+    ["boss_chain"] = { 
+        price = 500,
+        hotItem = true,
+        snitchChance = 25
+    },
+    ["branded_cigarette"] = { 
+        price = 25,
+        hotItem = true,
+        snitchChance = 5
+    },
+    ["branded_cigarette_box"] = { 
+        price = 200,
+        hotItem = true,
+        snitchChance = 10
+    },
+    ["ancient_egypt_artifact"] = { 
+        price = { min = 1500, max = 2500 },
+        hotItem = true,
+        snitchChance = 30
+    },
+    ["television"] = { 
+        price = { min = 300, max = 600 },
+        hotItem = true,
+        snitchChance = 15
+    },
+    ["music_player"] = { 
+        price = { min = 200, max = 400 },
+        hotItem = true,
+        snitchChance = 12
+    },
+    ["microwave"] = { 
+        price = { min = 150, max = 300 },
+        hotItem = true,
+        snitchChance = 10
+    },
+    ["computer"] = { 
+        price = { min = 800, max = 1500 },
+        hotItem = true,
+        snitchChance = 20
+    },
+    ["coffee_machine"] = { 
+        price = { min = 250, max = 500 },
+        hotItem = true,
+        snitchChance = 12
+    }
 }

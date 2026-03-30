@@ -176,19 +176,19 @@ RegisterNetEvent('djonstnix_pawnshop:server:sellItem', function(itemName, amount
         return 
     end
 
-    -- Amount Verification (works for qb/ox)
+    -- Amount Verification (works for qb/ox/lj)
     local totalAmount = 0
     if GetResourceState("ox_inventory") == "started" then
         totalAmount = exports.ox_inventory:Search(src, 'count', itemName)
     else
         for _, v in pairs(Player.PlayerData.items) do
             if v and v.name == itemName then
-                totalAmount = totalAmount + (v.amount or 0)
+                totalAmount = totalAmount + (v.amount or v.count or 0)
             end
         end
     end
 
-    if totalAmount < amount then
+    if not totalAmount or totalAmount < amount then
         TriggerClientEvent('ox_lib:notify', src, { title = 'Error', description = 'You do not have enough of this item.', type = 'error' })
         return
     end
@@ -208,8 +208,17 @@ RegisterNetEvent('djonstnix_pawnshop:server:sellItem', function(itemName, amount
     local totalPayout = pricePerUnit * amount
 
     -- Execute Safe Removal and Payout
-    if Player.Functions.RemoveItem(itemName, amount) then
-        TriggerClientEvent('inventory:client:ItemBox', src, QBCore.Shared.Items[itemName] or {name = itemName, label = itemName}, 'remove', amount)
+    local removed = false
+    if GetResourceState("ox_inventory") == "started" then
+        removed = exports.ox_inventory:RemoveItem(src, itemName, amount)
+    else
+        removed = Player.Functions.RemoveItem(itemName, amount)
+    end
+
+    if removed then
+        if GetResourceState("ox_inventory") ~= "started" then
+            TriggerClientEvent('inventory:client:ItemBox', src, QBCore.Shared.Items[itemName] or {name = itemName, label = itemName}, 'remove', amount)
+        end
         Player.Functions.AddMoney(Config.Settings.Currency, totalPayout, "sold-pawn-shop")
         TriggerClientEvent('ox_lib:notify', src, { title = 'Success', description = string.format('Sold %sx %s for $%s.', amount, itemName, totalPayout), type = 'success' })
         
@@ -292,8 +301,17 @@ RegisterNetEvent('djonstnix_pawnshop:server:sellAllItems', function()
     for itemName, amount in pairs(itemsToSell) do
         local itemConf = Config.Items[itemName]
         
-        if Player.Functions.RemoveItem(itemName, amount) then
-            TriggerClientEvent('inventory:client:ItemBox', src, QBCore.Shared.Items[itemName] or {name = itemName, label = itemName}, 'remove', amount)
+        local removed = false
+        if GetResourceState("ox_inventory") == "started" then
+            removed = exports.ox_inventory:RemoveItem(src, itemName, amount)
+        else
+            removed = Player.Functions.RemoveItem(itemName, amount)
+        end
+
+        if removed then
+            if GetResourceState("ox_inventory") ~= "started" then
+                TriggerClientEvent('inventory:client:ItemBox', src, QBCore.Shared.Items[itemName] or {name = itemName, label = itemName}, 'remove', amount)
+            end
             
             -- Current market logic
             local currentMult = ItemMultipliers[itemName] or 1.0
