@@ -138,10 +138,13 @@ function OpenPawnShopUI()
             else
                 totalStr = string.format("$%s", totalEstimatedMin)
             end
+            
+            local bulkTitle = Config.Economy.RotationEnabled and "Sell ALL Wanted Goods" or "Bulk Sell Items"
+            local bulkDesc = Config.Economy.RotationEnabled and string.format("Sell all %s wanted items at once.\nEst. Value: %s", totalSellablePieces, totalStr) or string.format("Sell all %s items at once.\nEst. Value: %s", totalSellablePieces, totalStr)
 
             table.insert(options, 1, {
-                title = "Sell ALL Wanted Goods",
-                description = string.format("Sell all %s wanted items at once.\nEst. Value: %s", totalSellablePieces, totalStr),
+                title = bulkTitle,
+                description = bulkDesc,
                 icon = "circle-dollar-to-slot",
                 onSelect = function()
                     TriggerServerEvent('djonstnix_pawnshop:server:sellAllItems')
@@ -149,9 +152,10 @@ function OpenPawnShopUI()
             })
         end
 
+        local menuTitle = Config.Economy.RotationEnabled and 'Pawn Broker (Wanted Goods)' or 'Pawn Broker (Sell Items)'
         lib.registerContext({
             id = 'djonstnix_pawnshop_menu',
-            title = 'Pawn Broker (Wanted Goods)',
+            title = menuTitle,
             options = options
         })
 

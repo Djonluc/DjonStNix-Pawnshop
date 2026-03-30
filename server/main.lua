@@ -8,17 +8,21 @@ local ActiveWantedItems = {}
 
 -- Initialize baseline economy
 CreateThread(function()
-    for itemName, conf in pairs(Config.Items) do
+    for itemName, _ in pairs(Config.Items) do
         ItemMultipliers[itemName] = 1.0
+        -- If rotation is disabled, they want everything always
+        if not Config.Economy.RotationEnabled then
+             ActiveWantedItems[itemName] = true
+        end
     end
     
     if Config.Economy.RotationEnabled then
         RotateWantedItems()
+        print("[DjonStNix-Pawnshop] 🔄 Shop Economy Initialized: Rotation ENABLED.")
     else
-        -- If rotation is disabled, they want everything always
-        for itemName, _ in pairs(Config.Items) do
-            ActiveWantedItems[itemName] = true
-        end
+        local count = 0
+        for _ in pairs(ActiveWantedItems) do count = count + 1 end
+        print(string.format("[DjonStNix-Pawnshop] 📉 Shop Economy Initialized: Rotation DISABLED. (%s items pawnable)", count))
     end
 end)
 
@@ -55,13 +59,13 @@ function RotateWantedItems()
     end
 end
 
--- Thread: Rotates Wanted Items every X minutes
+-- Thread: Rotates Wanted Items every X minutes (Only starts if rotation is enabled)
 CreateThread(function()
+    if not Config.Economy.RotationEnabled then return end 
+    
     while true do
         Wait(Config.Economy.RotationIntervalMin * 60000)
-        if Config.Economy.RotationEnabled then
-            RotateWantedItems()
-        end
+        RotateWantedItems()
     end
 end)
 
@@ -98,7 +102,7 @@ lib.callback.register('djonstnix_pawnshop:server:getSellableItems', function(sou
     for _, itemData in pairs(inventory) do
         if itemData and itemData.name and Config.Items[itemData.name] then
             -- ONLY return items if they are currently "wanted" by the pawn shop
-            if not Config.Economy.RotationEnabled or ActiveWantedItems[itemData.name] then
+            if ActiveWantedItems[itemData.name] then
                 local count = itemData.amount or itemData.count or 0
                 if count > 0 then
                     if not sellableItems[itemData.name] then
@@ -153,9 +157,9 @@ RegisterNetEvent('djonstnix_pawnshop:server:sellItem', function(itemName, amount
         return
     end
     
-    -- Check if it is currently a wanted item
+    -- Check if it is currently a wanted item (Only if rotation is enabled)
     if Config.Economy.RotationEnabled and not ActiveWantedItems[itemName] then
-        TriggerClientEvent('ox_lib:notify', src, { title = 'Error', description = 'The broker is not buying ' .. itemName .. ' right now.', type = 'error' })
+        TriggerClientEvent('ox_lib:notify', src, { title = 'Broker', description = 'I am not interested in buying that right now.', type = 'error' })
         return
     end
 
@@ -283,7 +287,7 @@ RegisterNetEvent('djonstnix_pawnshop:server:sellAllItems', function()
     local inventory = Player.PlayerData.items
     for _, itemData in pairs(inventory) do
         if itemData and itemData.name and Config.Items[itemData.name] then
-            if not Config.Economy.RotationEnabled or ActiveWantedItems[itemData.name] then
+            if ActiveWantedItems[itemData.name] then
                 local count = itemData.amount or itemData.count or 0
                 if count > 0 then
                     local itemName = itemData.name

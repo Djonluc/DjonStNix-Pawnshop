@@ -14,10 +14,10 @@ Config.Settings = {
 -- 📉 DYNAMIC ECONOMY & ROTATION
 -- ==============================================================================
 Config.Economy = {
-    -- Rotating Wanted Items
-    RotationEnabled = false,        -- If true, the pawn shop only buys a random subset of items at a time
-    RotationIntervalMin = 60,      -- How often the "Wanted Items" change (in minutes)
-    MaxWantedItems = 3,            -- How many different items the pawn shop will buy at any given time
+    -- Pawn Shop Configuration
+    RotationEnabled = false,        -- If false, ALL items in Config.Items are always buyable. If true, the broker only buys a subset.
+    RotationIntervalMin = 60,      -- (Only if RotationEnabled is true) How often the "Wanted Items" change (in minutes)
+    MaxWantedItems = 5,            -- (Only if RotationEnabled is true) How many different items the pawn shop will buy at any given time
     
     -- Price Depletion
     DepletionEnabled = true,       -- If true, selling an item lowers its price for everyone on the server
